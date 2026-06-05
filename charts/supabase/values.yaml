@@ -270,6 +270,9 @@ deployment:
     volumes: {}
     resources: {}
     extraInitContainers: []
+    ## envFrom for the postgres container (e.g. WAL-G credentials).
+    ## Each item is a corev1.EnvFromSource (secretRef / configMapRef).
+    envFrom: []
 
   functions:
     enabled: true
