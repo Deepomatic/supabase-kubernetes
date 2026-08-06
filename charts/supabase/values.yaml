@@ -257,6 +257,10 @@ deployment:
 
   auth:
     enabled: true
+    ## Env entries appended after environment.auth, so a single variable can be
+    ## overridden without restating every default of that list. Same
+    ## {name, value} / {name, valueFrom} shape.
+    extraEnv: []
     replicaCount: 1
     nameOverride: ""
     fullnameOverride: ""
@@ -365,6 +369,10 @@ deployment:
 
   kong:
     enabled: true
+    ## Env entries appended after environment.kong, so a single variable can be
+    ## overridden without restating every default of that list. Same
+    ## {name, value} / {name, valueFrom} shape.
+    extraEnv: []
     replicaCount: 1
     nameOverride: ""
     fullnameOverride: ""
@@ -499,6 +507,10 @@ deployment:
 
   storage:
     enabled: true
+    ## Env entries appended after environment.storage, so a single variable can be
+    ## overridden without restating every default of that list. Same
+    ## {name, value} / {name, valueFrom} shape.
+    extraEnv: []
     replicaCount: 1
     nameOverride: ""
     fullnameOverride: ""
@@ -526,6 +538,10 @@ deployment:
 
   studio:
     enabled: true
+    ## Env entries appended after environment.studio, so a single variable can be
+    ## overridden without restating every default of that list. Same
+    ## {name, value} / {name, valueFrom} shape.
+    extraEnv: []
     replicaCount: 1
     nameOverride: ""
     fullnameOverride: ""
