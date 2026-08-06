@@ -62,13 +62,9 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
-              echo "Initializing pgsodium persistent config directory..."
-              if [ -z "$(ls -A /mnt/pgsodium 2>/dev/null)" ]; then
-                echo "pgsodium volume is empty, copying default postgresql-custom files..."
-                cp -a /etc/postgresql-custom/. /mnt/pgsodium/
-              else
-                echo "pgsodium volume already initialized, skipping copy"
-              fi
+              echo "Seeding pgsodium persistent config directory..."
+              cp -a -n /etc/postgresql-custom/. /mnt/pgsodium/
+              echo "Seeded; pre-existing files were kept."
           volumeMounts:
             - mountPath: /mnt/pgsodium
               name: pgsodium
