@@ -146,6 +146,7 @@ spec:
               value: /app/snippets
             {{- end }}
             {{- include "supabase.env.render" (dict "env" .Values.environment.studio) | nindent 12 }}
+            {{- include "supabase.env.render" (dict "env" .Values.deployment.studio.extraEnv) | nindent 12 }}
           {{- with .Values.deployment.studio.envFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}

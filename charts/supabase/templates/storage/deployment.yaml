@@ -86,6 +86,7 @@ spec:
                   name: {{ include "supabase.secret.minio.name" . }}
                   key: {{ include "supabase.secret.minio.key.password" . }}
             {{- include "supabase.env.render" (dict "env" .Values.environment.storage) | nindent 12 }}
+            {{- include "supabase.env.render" (dict "env" .Values.deployment.storage.extraEnv) | nindent 12 }}
           imagePullPolicy: {{ .Values.image.minioClient.pullPolicy }}
           command:
             - /bin/sh
@@ -210,6 +211,7 @@ spec:
               value: "true"
             {{- end }}
             {{- include "supabase.env.render" (dict "env" .Values.environment.storage) | nindent 12 }}
+            {{- include "supabase.env.render" (dict "env" .Values.deployment.storage.extraEnv) | nindent 12 }}
           {{- with .Values.deployment.storage.envFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}

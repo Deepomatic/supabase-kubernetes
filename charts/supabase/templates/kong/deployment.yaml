@@ -115,6 +115,7 @@ spec:
                   key: {{ include "supabase.secret.dashboard.key.password" . }}
             {{- end }}
             {{- include "supabase.env.render" (dict "env" .Values.environment.kong) | nindent 12 }}
+            {{- include "supabase.env.render" (dict "env" .Values.deployment.kong.extraEnv) | nindent 12 }}
           {{- with .Values.deployment.kong.envFrom }}
           envFrom:
             {{- toYaml . | nindent 12 }}
