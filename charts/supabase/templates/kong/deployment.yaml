@@ -14,10 +14,11 @@ spec:
       {{- include "supabase.kong.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.deployment.kong.podAnnotations }}
       annotations:
+      {{- with .Values.deployment.kong.podAnnotations }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
+        checksum/config: {{ printf "%s%s" (tpl (.Files.Get "files/kong/kong.yml") .) (.Files.Get "files/kong/kong-entrypoint.sh") | sha256sum }}
       labels:
         {{- include "supabase.kong.selectorLabels" . | nindent 8 }}
     spec:
