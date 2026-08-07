@@ -63,7 +63,16 @@ spec:
           args:
             - |
               echo "Seeding pgsodium persistent config directory..."
-              cp -a -n /etc/postgresql-custom/. /mnt/pgsodium/
+              # Copied entry by entry, never clobbering. `cp -a -n src/. dst/`
+              # looks equivalent but is not: with newer coreutils it refuses to
+              # overwrite the destination directory itself and copies NOTHING,
+              # which silently left postgres without supautils.conf and wal-g.conf.
+              # It happened to work on the 15.x image and not on 17.x.
+              for f in /etc/postgresql-custom/* /etc/postgresql-custom/.[!.]*; do
+                [ -e "$f" ] || continue
+                t="/mnt/pgsodium/$(basename "$f")"
+                [ -e "$t" ] || cp -a "$f" "$t"
+              done
               echo "Seeded; pre-existing files were kept."
           volumeMounts:
             - mountPath: /mnt/pgsodium
