@@ -111,7 +111,7 @@ spec:
               protocol: TCP
           env:
             - name: STORAGE_BACKEND
-              value: {{ if .Values.deployment.minio.enabled }}"s3"{{ else }}"file"{{ end }}
+              value: {{ .Values.deployment.storage.backend | default (ternary "s3" "file" .Values.deployment.minio.enabled) | quote }}
             - name: DB_DRIVER
               value: "postgres"
             - name: DB_USER
