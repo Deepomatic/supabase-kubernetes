@@ -257,9 +257,14 @@ deployment:
 
   auth:
     enabled: true
-    ## Env entries appended after environment.auth, so a single variable can be
-    ## overridden without restating every default of that list. Same
+    ## Extra env appended after environment.auth. Same
     ## {name, value} / {name, valueFrom} shape.
+    ##
+    ## ADDS variables, does NOT override them. A name already present in
+    ## environment.auth produces a duplicate, and a duplicate is not an
+    ## override: server-side apply rejects the manifest outright, and without it
+    ## the winner depends on the runtime reading the env. To change a default,
+    ## edit the entry in environment.auth itself.
     extraEnv: []
     replicaCount: 1
     nameOverride: ""
@@ -369,9 +374,14 @@ deployment:
 
   kong:
     enabled: true
-    ## Env entries appended after environment.kong, so a single variable can be
-    ## overridden without restating every default of that list. Same
+    ## Extra env appended after environment.kong. Same
     ## {name, value} / {name, valueFrom} shape.
+    ##
+    ## ADDS variables, does NOT override them. A name already present in
+    ## environment.kong produces a duplicate, and a duplicate is not an
+    ## override: server-side apply rejects the manifest outright, and without it
+    ## the winner depends on the runtime reading the env. To change a default,
+    ## edit the entry in environment.kong itself.
     extraEnv: []
     replicaCount: 1
     nameOverride: ""
@@ -511,9 +521,14 @@ deployment:
     ## behaviour, which derives it from deployment.minio.enabled — that made
     ## an external S3-compatible endpoint impossible to select.
     backend: ""
-    ## Env entries appended after environment.storage, so a single variable can be
-    ## overridden without restating every default of that list. Same
+    ## Extra env appended after environment.storage. Same
     ## {name, value} / {name, valueFrom} shape.
+    ##
+    ## ADDS variables, does NOT override them. A name already present in
+    ## environment.storage produces a duplicate, and a duplicate is not an
+    ## override: server-side apply rejects the manifest outright, and without it
+    ## the winner depends on the runtime reading the env. To change a default,
+    ## edit the entry in environment.storage itself.
     extraEnv: []
     replicaCount: 1
     nameOverride: ""
@@ -542,9 +557,14 @@ deployment:
 
   studio:
     enabled: true
-    ## Env entries appended after environment.studio, so a single variable can be
-    ## overridden without restating every default of that list. Same
+    ## Extra env appended after environment.studio. Same
     ## {name, value} / {name, valueFrom} shape.
+    ##
+    ## ADDS variables, does NOT override them. A name already present in
+    ## environment.studio produces a duplicate, and a duplicate is not an
+    ## override: server-side apply rejects the manifest outright, and without it
+    ## the winner depends on the runtime reading the env. To change a default,
+    ## edit the entry in environment.studio itself.
     extraEnv: []
     replicaCount: 1
     nameOverride: ""
