@@ -507,6 +507,10 @@ deployment:
 
   storage:
     enabled: true
+    ## Storage backend: "s3" or "file". Empty falls back to the historical
+    ## behaviour, which derives it from deployment.minio.enabled — that made
+    ## an external S3-compatible endpoint impossible to select.
+    backend: ""
     ## Env entries appended after environment.storage, so a single variable can be
     ## overridden without restating every default of that list. Same
     ## {name, value} / {name, valueFrom} shape.
