@@ -245,6 +245,81 @@ environment:
 
 User-provided entries are rendered after the chart defaults, so any chart-managed env var can be overridden by adding an entry with the same `name` to the component array.
 
+### Postgres server settings
+
+`deployment.db.serverOptions` is a map of Postgres settings rendered as
+`-c <name>=<value>` on the server's command line, after `deployment.db.args`.
+
+A command-line option outranks `postgresql.auto.conf`, so anything set here also
+wins over an `ALTER SYSTEM` applied by an earlier migration. That is what makes
+these settings reach a database **already in service**: a pod restart is enough,
+with nothing to replay by hand and no database to recreate.
+
+```yaml
+deployment:
+  db:
+    serverOptions:
+      wal_level: logical
+      max_slot_wal_keep_size: 4096MB
+```
+
+> [!WARNING]
+> `deployment.db.args` restates the image's own `CMD` and both halves matter: the
+> entrypoint only initialises a fresh database when the **first argument is
+> `postgres`**, and `-D` points at the image's **config** directory, not at the
+> data directory. Change `args` only when the image changes; use `serverOptions`
+> for settings.
+
+### Event streaming
+
+`deployment.db.streaming` puts the SQL objects a change-data-capture reader needs
+in place. They are applied by a `post-install,post-upgrade` job, idempotently, so
+a database that predates this block gets them on the next sync — no re-init, no
+manual step.
+
+By default everything is **latent**: the role exists with no password, which
+makes it unable to open any connection at all, and the publication is empty.
+
+Turning it on is one change, and it needs no restart:
+
+```yaml
+deployment:
+  db:
+    streaming:
+      reader:
+        secretRef: my-streaming-secret
+      publication:
+        schemas: [capture]
+```
+
+Clearing `reader.secretRef` again takes the password back off the role, so
+closing the switch closes it on an instance where it had been opened.
+
+Publishing whole schemas keeps "create a table" from silently becoming "remember
+to add it somewhere"; `publication.tables` is the explicit alternative. Both are
+granted `SELECT` to the reader — published schemas are granted, never created, so
+a name that does not exist fails loudly instead of becoming an empty schema. A
+published table with no replica identity is refused for the same reason: it would
+accept `INSERT` and then reject every `UPDATE` and `DELETE`.
+
+Emptying the lists again does **not** shrink the publication: dropping what a
+reader is subscribed to is a deliberate act, not a side effect of a sync. Use
+`ALTER PUBLICATION ... DROP` for that.
+
+> [!NOTE]
+> `wal_level = logical` is what a reader decodes from, and the default
+> `serverOptions` above keep it in place. Measured against `replica` on an
+> identical write load, logical produced +0.4% of WAL — there is no reason to
+> reserve the capability for the instances that stream today. What does cost is
+> `REPLICA IDENTITY FULL` (+11.7% on the same load, far more on wide rows); it is
+> decided table by table and is unnecessary as soon as a table has a primary key.
+
+> [!WARNING]
+> A replication slot that stops being read retains WAL. `max_slot_wal_keep_size`
+> bounds that: past the bound the slot is **invalidated** rather than letting the
+> volume fill up. The database is safe, but the reader must then restart from a
+> fresh snapshot.
+
 ## How to use in Production
 
 We didn't provide a complete configuration to go production because of the multiple possibility.

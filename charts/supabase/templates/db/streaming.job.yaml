@@ -1,0 +1,105 @@
+{{- if and .Values.deployment.db.enabled .Values.deployment.db.streaming.enabled }}
+{{- $streaming := .Values.deployment.db.streaming }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "supabase.db.streaming.fullname" . }}
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+  annotations:
+    # Runs after the database is up, on install and on every upgrade. That is
+    # what carries the capability onto instances deployed before it existed.
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 6
+  # A post-sync hook that never returns holds the whole sync. Bounded on both
+  # sides: the wait below gives up, and the deadline covers the pod never
+  # getting that far (image pull, scheduling).
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        {{- include "supabase.labels" . | nindent 8 }}
+        app.kubernetes.io/component: db-streaming
+    spec:
+      restartPolicy: Never
+      {{- with .Values.deployment.db.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.deployment.db.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: streaming
+          image: "{{ .Values.image.db.repository }}:{{ .Values.image.db.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.db.pullPolicy }}
+          env:
+            {{- include "supabase.db.hostEnv" (dict "root" . "name" "PGHOST") | nindent 12 }}
+            {{- include "supabase.db.portEnv" (dict "root" . "name" "PGPORT") | nindent 12 }}
+            - name: PGUSER
+              value: {{ $streaming.superuser | quote }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.secret.db.name" . }}
+                  key: {{ include "supabase.secret.db.key.password" . }}
+            - name: PGDATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.secret.db.name" . }}
+                  key: {{ include "supabase.secret.db.key.database" . }}
+            - name: PGCONNECT_TIMEOUT
+              value: "10"
+            {{- with $streaming.reader.secretRef }}
+            - name: STREAMING_READER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ index (default (dict) $streaming.reader.secretRefKey) "password" | default "password" }}
+            {{- end }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+
+              attempts=0
+              until pg_isready -q; do
+                attempts=$((attempts + 1))
+                if [ "$attempts" -ge 60 ]; then
+                  echo "Database still unreachable after $attempts attempts; giving up."
+                  exit 1
+                fi
+                echo "Waiting for the database to accept connections..."
+                sleep 5
+              done
+
+              psql -X -q -v ON_ERROR_STOP=1 -f /streaming/latent.sql
+              echo "Latent streaming objects are in place."
+
+              {{- if $streaming.reader.secretRef }}
+              if [ -z "${STREAMING_READER_PASSWORD:-}" ]; then
+                echo "reader.secretRef is set but the password it points at is empty." >&2
+                exit 1
+              fi
+              psql -X -q -v ON_ERROR_STOP=1 -f /streaming/password.sql
+              echo "Reader password set; the role can now connect."
+              {{- else }}
+              echo "No reader password configured; the role cannot connect."
+              {{- end }}
+          volumeMounts:
+            - mountPath: /streaming
+              name: streaming
+          {{- with .Values.deployment.db.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: streaming
+          configMap:
+            name: {{ include "supabase.db.streaming.fullname" . }}
+{{- end }}

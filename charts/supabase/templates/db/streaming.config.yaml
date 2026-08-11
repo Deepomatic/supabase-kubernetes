@@ -1,0 +1,141 @@
+{{- define "supabase.db.streaming.fullname" -}}
+{{- printf "%s-streaming" (include "supabase.db.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end -}}
+
+{{/*
+Validate a name and give it back as a quoted SQL identifier. These names end up
+in statements run as superuser, so anything that is not a plain lowercase
+identifier stops the render rather than reaching the database.
+Usage: include "supabase.db.streaming.ident" (dict "field" "schema" "name" $schema)
+*/}}
+{{- define "supabase.db.streaming.ident" -}}
+{{- if not (regexMatch "^[a-z_][a-z0-9_]{0,62}$" .name) -}}
+{{- fail (printf "deployment.db.streaming.%s must be a plain lowercase SQL identifier, got %q" .field .name) -}}
+{{- end -}}
+{{- printf "\"%s\"" .name -}}
+{{- end -}}
+
+{{/*
+Same, for a table given as `schema.table`.
+*/}}
+{{- define "supabase.db.streaming.tableIdent" -}}
+{{- if not (regexMatch "^[a-z_][a-z0-9_]{0,62}\\.[a-z_][a-z0-9_]{0,62}$" .name) -}}
+{{- fail (printf "deployment.db.streaming.publication.tables entries must be schema-qualified plain lowercase identifiers, got %q" .name) -}}
+{{- end -}}
+{{- $parts := splitList "." .name -}}
+{{- printf "\"%s\".\"%s\"" (index $parts 0) (index $parts 1) -}}
+{{- end -}}
+
+{{- if and .Values.deployment.db.enabled .Values.deployment.db.streaming.enabled }}
+{{- $streaming := .Values.deployment.db.streaming }}
+{{- $publication := $streaming.publication }}
+{{- $role := include "supabase.db.streaming.ident" (dict "field" "reader.role" "name" $streaming.reader.role) }}
+{{- $schema := include "supabase.db.streaming.ident" (dict "field" "schema" "name" $streaming.schema) }}
+{{- $pub := include "supabase.db.streaming.ident" (dict "field" "publication.name" "name" $publication.name) }}
+{{- $extraSchemas := without (default (list) $publication.schemas) $streaming.schema }}
+{{- $tables := default (list) $publication.tables }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "supabase.db.streaming.fullname" . }}
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+data:
+  latent.sql: |
+    -- Replayed on every sync, against a fresh database as well as one already
+    -- in service. Every statement must therefore converge, never assume.
+
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT FROM pg_roles WHERE rolname = {{ $streaming.reader.role | squote }}) THEN
+        ALTER ROLE {{ $role }} WITH LOGIN REPLICATION NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+      ELSE
+        CREATE ROLE {{ $role }} WITH LOGIN REPLICATION NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+      END IF;
+    END
+    $$;
+    {{- if not $streaming.reader.secretRef }}
+
+    -- No password configured: the role is taken back to where it cannot
+    -- connect. Closing the switch has to actually close it, including on an
+    -- instance where it had been opened.
+    ALTER ROLE {{ $role }} PASSWORD NULL;
+    {{- end }}
+
+    CREATE SCHEMA IF NOT EXISTS {{ $schema }};
+    GRANT USAGE ON SCHEMA {{ $schema }} TO {{ $role }};
+    GRANT SELECT ON ALL TABLES IN SCHEMA {{ $schema }} TO {{ $role }};
+    ALTER DEFAULT PRIVILEGES IN SCHEMA {{ $schema }} GRANT SELECT ON TABLES TO {{ $role }};
+    {{- range $extraSchemas }}
+    {{- $ident := include "supabase.db.streaming.ident" (dict "field" "publication.schemas" "name" .) }}
+
+    -- Published schema, owned by the project: granted, never created. A name
+    -- that does not exist must fail here rather than become an empty schema.
+    GRANT USAGE ON SCHEMA {{ $ident }} TO {{ $role }};
+    GRANT SELECT ON ALL TABLES IN SCHEMA {{ $ident }} TO {{ $role }};
+    ALTER DEFAULT PRIVILEGES IN SCHEMA {{ $ident }} GRANT SELECT ON TABLES TO {{ $role }};
+    {{- end }}
+    {{- range $tables }}
+
+    GRANT SELECT ON TABLE {{ include "supabase.db.streaming.tableIdent" (dict "name" .) }} TO {{ $role }};
+    {{- end }}
+
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT FROM pg_publication WHERE pubname = {{ $publication.name | squote }}) THEN
+        CREATE PUBLICATION {{ $pub }};
+      END IF;
+    END
+    $$;
+    {{- if or $extraSchemas $tables }}
+
+    -- A published table with no replica identity accepts INSERT and then
+    -- rejects every UPDATE and DELETE. Better to refuse the sync than to hand
+    -- the application back a table it can no longer write to.
+    DO $$
+    DECLARE
+      offenders text;
+    BEGIN
+      SELECT string_agg(format('%I.%I', n.nspname, c.relname), ', ' ORDER BY n.nspname, c.relname)
+        INTO offenders
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE c.relkind = 'r'
+         AND (
+           c.relreplident = 'n'
+           OR (c.relreplident = 'd' AND NOT EXISTS (
+                 SELECT FROM pg_index i WHERE i.indrelid = c.oid AND i.indisprimary))
+         )
+         AND (
+           false
+           {{- if $extraSchemas }}
+           OR n.nspname = ANY (ARRAY[{{ range $i, $s := $extraSchemas }}{{ if $i }}, {{ end }}{{ $s | squote }}{{ end }}])
+           {{- end }}
+           {{- if $tables }}
+           OR c.oid = ANY (ARRAY[{{ range $i, $t := $tables }}{{ if $i }}, {{ end }}{{ $t | squote }}::regclass{{ end }}])
+           {{- end }}
+         );
+
+      IF offenders IS NOT NULL THEN
+        RAISE EXCEPTION 'published tables have no replica identity: %. UPDATE and DELETE would be rejected on them once published. Give them a primary key, or set REPLICA IDENTITY explicitly.', offenders;
+      END IF;
+    END
+    $$;
+
+    ALTER PUBLICATION {{ $pub }} SET
+      {{- $objects := list }}
+      {{- range $extraSchemas }}
+        {{- $objects = append $objects (printf "TABLES IN SCHEMA %s" (include "supabase.db.streaming.ident" (dict "field" "publication.schemas" "name" .))) }}
+      {{- end }}
+      {{- range $tables }}
+        {{- $objects = append $objects (printf "TABLE %s" (include "supabase.db.streaming.tableIdent" (dict "name" .))) }}
+      {{- end }}
+      {{ join ",\n      " $objects }};
+    {{- end }}
+  password.sql: |
+    -- The other half of the switch. \getenv keeps the password out of the
+    -- process arguments, and :'password' lets psql quote it as a literal
+    -- rather than trusting the shell with it.
+    \getenv password STREAMING_READER_PASSWORD
+    ALTER ROLE {{ $role }} PASSWORD :'password';
+{{- end }}
