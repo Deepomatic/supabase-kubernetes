@@ -1,0 +1,59 @@
+{{- if and .Values.deployment.db.enabled .Values.deployment.db.streaming.enabled -}}
+{{- $streaming := .Values.deployment.db.streaming }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "supabase.fullname" . }}-test-streaming
+  labels:
+    {{- include "supabase.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+spec:
+  ttlSecondsAfterFinished: 100
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: test-streaming
+          image: "{{ .Values.image.db.repository }}:{{ .Values.image.db.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.db.pullPolicy }}
+          env:
+            {{- include "supabase.db.hostEnv" (dict "root" . "name" "PGHOST") | nindent 12 }}
+            {{- include "supabase.db.portEnv" (dict "root" . "name" "PGPORT") | nindent 12 }}
+            - name: PGUSER
+              value: {{ $streaming.superuser | quote }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.secret.db.name" . }}
+                  key: {{ include "supabase.secret.db.key.password" . }}
+            - name: PGDATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "supabase.secret.db.name" . }}
+                  key: {{ include "supabase.secret.db.key.database" . }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              assert() {
+                got=$(psql -X -tA -c "$2")
+                [ "$got" = "$3" ] || { echo "$1: expected [$3], got [$got]"; exit 1; }
+                echo "$1: ok"
+              }
+
+              assert "logical decoding is available" \
+                "SELECT current_setting('wal_level')" "logical"
+              assert "the reader can replicate" \
+                "SELECT rolreplication AND rolcanlogin FROM pg_roles WHERE rolname = {{ $streaming.reader.role | squote }}" "t"
+              assert "the reader is no superuser" \
+                "SELECT rolsuper FROM pg_roles WHERE rolname = {{ $streaming.reader.role | squote }}" "f"
+              {{- if not $streaming.reader.secretRef }}
+              assert "the reader has no password, so it cannot connect" \
+                "SELECT rolpassword IS NULL FROM pg_authid WHERE rolname = {{ $streaming.reader.role | squote }}" "t"
+              {{- end }}
+              assert "the dedicated schema exists" \
+                "SELECT count(*) FROM pg_namespace WHERE nspname = {{ $streaming.schema | squote }}" "1"
+              assert "the publication exists" \
+                "SELECT count(*) FROM pg_publication WHERE pubname = {{ $streaming.publication.name | squote }}" "1"
+{{- end }}

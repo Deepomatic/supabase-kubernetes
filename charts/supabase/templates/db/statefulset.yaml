@@ -117,6 +117,16 @@ spec:
         - name: {{ include "supabase.db.name" $ }}
           image: "{{ .Values.image.db.repository }}:{{ .Values.image.db.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.db.pullPolicy }}
+          {{- if or .Values.deployment.db.args .Values.deployment.db.serverOptions }}
+          args:
+            {{- range .Values.deployment.db.args }}
+            - {{ . | quote }}
+            {{- end }}
+            {{- range $name, $value := .Values.deployment.db.serverOptions }}
+            - "-c"
+            - {{ printf "%s=%s" $name (toString $value) | quote }}
+            {{- end }}
+          {{- end }}
           ports:
             - name: http
               containerPort: 5432

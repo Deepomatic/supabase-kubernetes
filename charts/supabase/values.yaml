@@ -320,6 +320,88 @@ deployment:
     extraInitContainers: []
     initDb: true
 
+    ## Arguments given to the postgres container. This restates the image's own
+    ## CMD, and both halves are easy to lose:
+    ##   - the entrypoint only initialises a fresh database when the FIRST
+    ##     argument is `postgres`;
+    ##   - `-D` points at the image's CONFIG directory, not at the data
+    ##     directory (postgresql.conf carries `data_directory`).
+    ## Change this only when the image changes; use serverOptions for settings.
+    args:
+      - postgres
+      - -D
+      - /etc/postgresql
+
+    ## Server settings, rendered as `-c <name>=<value>` after args.
+    ##
+    ## A command-line option outranks postgresql.auto.conf, so what is set here
+    ## also wins over any ALTER SYSTEM left behind by an earlier migration.
+    ## That is what lets an instance already in service be brought in line by a
+    ## pod restart alone: nothing to replay by hand, no database to recreate.
+    serverOptions:
+      ## Logical decoding, the entry ticket to event streaming. The image
+      ## already ships `wal_level = logical`; restating it here undoes any
+      ## ALTER SYSTEM that lowered it. Measured against `replica` on an
+      ## identical write load, logical produced +0.4% of WAL: there is no
+      ## reason to keep the capability for those who stream today.
+      wal_level: logical
+      ## Restated for the same reason, and to pin them against image defaults
+      ## drifting across major versions: max_slot_wal_keep_size falls from 4096
+      ## to 512 between the 15.x and 17.x images, which would quietly divide
+      ## the margin before a stalled slot is invalidated by eight.
+      ##
+      ## max_replication_slots is deliberately above the image default of 5:
+      ## the server refuses to start when it is set below the number of slots
+      ## already on disk, so it may be raised but never lowered blindly.
+      max_wal_senders: 10
+      max_replication_slots: 10
+      max_slot_wal_keep_size: 4096MB
+
+    ## Event streaming capability: the SQL objects a change-data-capture reader
+    ## needs. Applied idempotently after every sync, so a database that predates
+    ## this block gets them too — no re-init, no manual step.
+    ##
+    ## Latent by default: the role exists with no password, which makes it
+    ## unable to open any connection at all, and the publication is empty.
+    ## Filling `reader.secretRef` and `publication.schemas`/`publication.tables`
+    ## is the whole switch, and neither needs a restart.
+    streaming:
+      enabled: true
+
+      ## Superuser the job connects as. This is the image's POSTGRES_USER; its
+      ## password is read from the db secret, like the database container's.
+      superuser: supabase_admin
+
+      reader:
+        ## Owns nothing, writes nothing: it exists to open a replication
+        ## connection and read what the publication exposes.
+        role: streaming_reader
+
+        ## Secret carrying the role's password. Left empty, the role keeps no
+        ## password and stays unable to connect. Setting it is one half of the
+        ## switch; the password is applied without a restart.
+        secretRef: ""
+        secretRefKey:
+          password: password
+
+      ## Schema handed to the streaming machinery (outbox, heartbeat table).
+      ## Created empty, and readable by the role.
+      schema: streaming
+
+      publication:
+        name: streaming
+
+        ## What is published. Publishing whole schemas keeps "create a table"
+        ## from silently becoming "remember to add it somewhere"; naming tables
+        ## is the explicit alternative. Both empty leaves the publication empty
+        ## — present, and carrying nothing.
+        ##
+        ## Emptying these lists again does NOT shrink the publication: dropping
+        ## what a reader is subscribed to is a deliberate act, not a side effect
+        ## of a sync. Use ALTER PUBLICATION ... DROP for that.
+        schemas: []
+        tables: []
+
   functions:
     enabled: true
     replicaCount: 1
