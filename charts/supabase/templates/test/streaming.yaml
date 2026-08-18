@@ -54,6 +54,18 @@ spec:
               {{- end }}
               assert "the dedicated schema exists" \
                 "SELECT count(*) FROM pg_namespace WHERE nspname = {{ $streaming.schema | squote }}" "1"
+              assert "the reader can keep its positions" \
+                "SELECT has_schema_privilege({{ $streaming.reader.role | squote }}, {{ $streaming.schema | squote }}, 'CREATE')" "t"
+              assert "the witness table exists" \
+                "SELECT count(*) FROM pg_tables WHERE schemaname = {{ $streaming.schema | squote }} AND tablename = 'heartbeat'" "1"
+              assert "the reader can beat on it" \
+                "SELECT has_table_privilege({{ $streaming.reader.role | squote }}, {{ printf "%s.heartbeat" $streaming.schema | squote }}, 'UPDATE')" "t"
               assert "the publication exists" \
                 "SELECT count(*) FROM pg_publication WHERE pubname = {{ $streaming.publication.name | squote }}" "1"
+              {{- $extraSchemas := without (default (list) $streaming.publication.schemas) $streaming.schema }}
+              {{- $tables := default (list) $streaming.publication.tables }}
+              {{- if or $extraSchemas $tables }}
+              assert "the beat is decodable" \
+                "SELECT count(*) FROM pg_publication_tables WHERE pubname = {{ $streaming.publication.name | squote }} AND schemaname = {{ $streaming.schema | squote }} AND tablename = 'heartbeat'" "1"
+              {{- end }}
 {{- end }}

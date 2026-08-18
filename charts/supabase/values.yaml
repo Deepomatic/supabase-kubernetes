@@ -384,8 +384,14 @@ deployment:
         secretRefKey:
           password: password
 
-      ## Schema handed to the streaming machinery (outbox, heartbeat table).
-      ## Created empty, and readable by the role.
+      ## Schema the streaming machinery keeps to itself. Created empty, and the
+      ## one place the reader may write: it records there how far it has read,
+      ## and it beats on a witness table created alongside. Everywhere else the
+      ## role stays read-only.
+      ##
+      ## Keeping the position next to the data is what makes a restore coherent:
+      ## a database brought back to an earlier point brings its reader back with
+      ## it, instead of leaving it convinced it is further ahead than the rows.
       schema: streaming
 
       publication:
