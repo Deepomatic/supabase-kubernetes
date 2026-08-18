@@ -32,6 +32,7 @@ Same, for a table given as `schema.table`.
 {{- $role := include "supabase.db.streaming.ident" (dict "field" "reader.role" "name" $streaming.reader.role) }}
 {{- $schema := include "supabase.db.streaming.ident" (dict "field" "schema" "name" $streaming.schema) }}
 {{- $pub := include "supabase.db.streaming.ident" (dict "field" "publication.name" "name" $publication.name) }}
+{{- $heartbeat := printf "%s.\"heartbeat\"" $schema }}
 {{- $extraSchemas := without (default (list) $publication.schemas) $streaming.schema }}
 {{- $tables := default (list) $publication.tables }}
 apiVersion: v1
@@ -66,6 +67,29 @@ data:
     GRANT USAGE ON SCHEMA {{ $schema }} TO {{ $role }};
     GRANT SELECT ON ALL TABLES IN SCHEMA {{ $schema }} TO {{ $role }};
     ALTER DEFAULT PRIVILEGES IN SCHEMA {{ $schema }} GRANT SELECT ON TABLES TO {{ $role }};
+
+    -- The one place the reader may write. It needs somewhere to record how far
+    -- it has read, or every restart replays from a fresh snapshot; that record
+    -- belongs next to the data it describes, so a restore brings back a
+    -- position that matches the rows. Granting CREATE here lets the reader own
+    -- that table without anyone provisioning it. Everywhere else it stays
+    -- read-only.
+    GRANT CREATE ON SCHEMA {{ $schema }} TO {{ $role }};
+
+    -- Witness for the periodic beat. A reader only ever confirms a position it
+    -- has emitted, so a published set that stays quiet leaves the slot standing
+    -- still while the journal moves on and is retained. Beating writes here,
+    -- which is a change the reader does see, and the slot follows.
+    --
+    -- One row, held to one by the primary key, which doubles as the replica
+    -- identity a published table must have. It costs a row and is inert until
+    -- something beats on it.
+    CREATE TABLE IF NOT EXISTS {{ $heartbeat }} (
+      id boolean PRIMARY KEY DEFAULT true CHECK (id),
+      beat_at timestamptz NOT NULL DEFAULT now()
+    );
+    INSERT INTO {{ $heartbeat }} (id) VALUES (true) ON CONFLICT DO NOTHING;
+    GRANT UPDATE ON {{ $heartbeat }} TO {{ $role }};
     {{- range $extraSchemas }}
     {{- $ident := include "supabase.db.streaming.ident" (dict "field" "publication.schemas" "name" .) }}
 
@@ -122,6 +146,10 @@ data:
     END
     $$;
 
+    -- The witness joins the publication exactly when the instance streams: a
+    -- beat that is not published produces nothing the reader can decode, and so
+    -- moves no slot. It is not routed anywhere -- the reader leaves it out of
+    -- what it captures, and only ever sees it go by.
     ALTER PUBLICATION {{ $pub }} SET
       {{- $objects := list }}
       {{- range $extraSchemas }}
@@ -130,6 +158,7 @@ data:
       {{- range $tables }}
         {{- $objects = append $objects (printf "TABLE %s" (include "supabase.db.streaming.tableIdent" (dict "name" .))) }}
       {{- end }}
+      {{- $objects = append $objects (printf "TABLE %s" $heartbeat) }}
       {{ join ",\n      " $objects }};
     {{- end }}
   password.sql: |
