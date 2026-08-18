@@ -2,8 +2,6 @@ name: release-operator
 
 on:
   push:
-    branches:
-      - develop
     tags:
       - "v*"
 

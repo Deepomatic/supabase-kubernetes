@@ -23,6 +23,24 @@ You can choose between two approaches:
 - **Supabase Kubernetes Operator**: manage Supabase through Kubernetes Custom Resources (`core.supabase.io/v1alpha1`). The Operator is in an early stage of development and its API may change.
 - **Supabase Helm Chart**: deploy Supabase using a traditional Helm chart. See [`charts/supabase`](./charts/supabase/README.md) for details.
 
+## Deepomatic fork
+
+This fork is released the way every other Deepomatic-owned artifact is:
+
+- **`main` is the working branch**, and the only one. Work happens on it through
+  PRs; there is no long-lived side branch that the default branch trails behind.
+  (Until 2026-08 the work happened on `deepomatic-walg` while `main` sat 244
+  commits behind. Tags, and only tags, were what anyone actually consumed.)
+- **Publication is a semver tag pushed by hand**, `v<upstream>-deepomatic.<n>`.
+  Merging releases nothing: it is the tag that produces the GitHub release, and
+  the tag is deliberate.
+- **Consumers read the chart from git**, at that tag and a path — the way the
+  rest of the ecosystem consumes charts we own. There is no intermediate Helm
+  repository to keep in sync; third-party charts are the ones pulled from their
+  own registries.
+
+So: merge, then `git tag -a v… && git push origin v…` when you mean to release.
+
 ## Overview
 
 The Operator exposes the following Kubernetes Custom Resources:
