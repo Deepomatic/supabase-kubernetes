@@ -408,6 +408,22 @@ deployment:
         schemas: []
         tables: []
 
+      ## Who, elsewhere on this cluster, may read the password above.
+      ##
+      ## A reader runs with its consumer rather than here — a database is a
+      ## dependency, not a home — so it needs to read this secret from another
+      ## namespace. Granting that is done from here, because this is the
+      ## namespace that holds it; the reader declares the matching account and
+      ## store on its own side, under the same name.
+      ##
+      ## Each entry gets `get` on that one secret, and nothing else. Empty, and
+      ## the secret stays unreadable from anywhere else, which is the default.
+      ##
+      ##   readers:
+      ##     - namespace: iqgeo-lens-hot
+      ##       serviceAccount: lens-capture-reader
+      readers: []
+
   functions:
     enabled: true
     replicaCount: 1

@@ -1,0 +1,51 @@
+{{- if and .Values.deployment.db.enabled .Values.deployment.db.streaming.enabled }}
+{{- $streaming := .Values.deployment.db.streaming }}
+{{- range $reader := default (list) $streaming.readers }}
+{{- if not $reader.namespace }}{{ fail "deployment.db.streaming.readers[].namespace is required" }}{{ end }}
+{{- if not $reader.serviceAccount }}{{ fail "deployment.db.streaming.readers[].serviceAccount is required" }}{{ end }}
+{{- if not $streaming.reader.secretRef }}{{ fail "deployment.db.streaming.readers is set but reader.secretRef is not: there would be no password to grant a look at" }}{{ end }}
+---
+# A reader, somewhere else on this cluster, allowed to read this instance's
+# streaming password — and only that.
+#
+# Granting is done here, by the namespace that holds the secret, rather than
+# claimed from the outside: a component does not write into a namespace it does
+# not own. The reader declares the other half of it — an account by this same
+# name, and the store that presents it — in its own namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ printf "streaming-reader-%s" $reader.serviceAccount | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "supabase.labels" $ | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: [{{ $streaming.reader.secretRef | quote }}]
+    verbs: ["get"]
+  # `get` on one named secret, and nothing more. Adding list or watch is the
+  # obvious-looking fix when a store misbehaves, and it is the wrong one:
+  # Kubernetes refuses resourceNames alongside them, so they would cover EVERY
+  # secret here — including this database's own passwords — and a list returns
+  # their contents. Measured on a throwaway cluster: granted, the account reads
+  # all of them; withheld, the reader's store still validates and syncs.
+  - apiGroups: ["authorization.k8s.io"]
+    resources: ["selfsubjectrulesreviews"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ printf "streaming-reader-%s" $reader.serviceAccount | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "supabase.labels" $ | nindent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $reader.serviceAccount }}
+    namespace: {{ $reader.namespace }}
+roleRef:
+  kind: Role
+  name: {{ printf "streaming-reader-%s" $reader.serviceAccount | trunc 63 | trimSuffix "-" }}
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}
+{{- end }}
