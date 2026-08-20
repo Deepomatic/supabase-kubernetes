@@ -402,9 +402,11 @@ deployment:
         ## is the explicit alternative. Both empty leaves the publication empty
         ## — present, and carrying nothing.
         ##
-        ## Emptying these lists again does NOT shrink the publication: dropping
-        ## what a reader is subscribed to is a deliberate act, not a side effect
-        ## of a sync. Use ALTER PUBLICATION ... DROP for that.
+        ## Emptying these lists DOES shrink the publication: the sync runs
+        ## `ALTER PUBLICATION ... SET`, which REPLACES the published set rather
+        ## than adding to it. Removing a name here stops publishing it on the very
+        ## next sync -- convenient, and worth knowing before removing one that a
+        ## reader is still consuming.
         schemas: []
         tables: []
 
