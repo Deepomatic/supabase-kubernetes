@@ -90,11 +90,34 @@ data:
     );
     INSERT INTO {{ $heartbeat }} (id) VALUES (true) ON CONFLICT DO NOTHING;
     GRANT UPDATE ON {{ $heartbeat }} TO {{ $role }};
+    {{- if $extraSchemas }}
+
+    -- Say why, before saying no. Without this, an absent schema surfaces as a
+    -- bare "schema does not exist" on a GRANT below -- true, but it points at the
+    -- platform, which is the one place the fault is not. A published schema is
+    -- part of the project's data model; this chart grants access to it and never
+    -- creates it, so that a mistyped name fails loudly instead of becoming an
+    -- empty schema nobody ever notices is streaming nothing.
+    DO $$
+    DECLARE
+      missing text;
+    BEGIN
+      SELECT string_agg(quote_ident(s), ', ' ORDER BY s) INTO missing
+        FROM unnest(ARRAY[{{ range $i, $s := $extraSchemas }}{{ if $i }}, {{ end }}{{ $s | squote }}{{ end }}]) AS s
+       WHERE NOT EXISTS (SELECT FROM pg_namespace WHERE nspname = s);
+      IF missing IS NOT NULL THEN
+        RAISE EXCEPTION USING
+          MESSAGE = format('published schema %s does not exist', missing),
+          DETAIL  = 'It is declared in the instance streaming.schemas, and it belongs to the project data model.',
+          HINT    = 'Create it where the application creates its tables. This chart grants a reader access to a published schema and never creates one, so a name that does not exist fails here rather than becoming an empty schema that streams nothing.';
+      END IF;
+    END
+    $$;
+    {{- end }}
     {{- range $extraSchemas }}
     {{- $ident := include "supabase.db.streaming.ident" (dict "field" "publication.schemas" "name" .) }}
 
-    -- Published schema, owned by the project: granted, never created. A name
-    -- that does not exist must fail here rather than become an empty schema.
+    -- Published schema, owned by the project: granted, never created.
     GRANT USAGE ON SCHEMA {{ $ident }} TO {{ $role }};
     GRANT SELECT ON ALL TABLES IN SCHEMA {{ $ident }} TO {{ $role }};
     ALTER DEFAULT PRIVILEGES IN SCHEMA {{ $ident }} GRANT SELECT ON TABLES TO {{ $role }};
