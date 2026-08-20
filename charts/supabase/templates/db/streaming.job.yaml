@@ -7,9 +7,23 @@ metadata:
   labels:
     {{- include "supabase.labels" . | nindent 4 }}
   annotations:
-    # Runs after the database is up, on install and on every upgrade. That is
-    # what carries the capability onto instances deployed before it existed.
-    "helm.sh/hook": post-install,post-upgrade
+    # Runs BEFORE the rest of an upgrade, and after a fresh install.
+    #
+    # The order matters more than it looks. A reader deployed next to this
+    # database cannot start until the role it logs in as has a password — and
+    # under Argo CD, a post-sync hook only runs once every synced resource is
+    # healthy. Leave this hook post-only and the two wait for each other: the
+    # reader for its password, the password for the reader. Observed, not feared.
+    #
+    # pre-upgrade breaks that cycle: the capability is opened first, and whatever
+    # depends on it is judged afterwards. post-install keeps the fresh case, where
+    # there is no database yet to prepare when the sync begins.
+    #
+    # Argo CD does not distinguish install from upgrade: it renders both hooks, so
+    # this runs in PreSync and again in PostSync. That costs one idempotent replay
+    # and is exactly what makes the first sync converge — see the tolerated wait
+    # below.
+    "helm.sh/hook": pre-upgrade,post-install
     "helm.sh/hook-weight": "0"
     "helm.sh/hook-delete-policy": before-hook-creation
 spec:
@@ -67,12 +81,17 @@ spec:
             - |
               set -e
 
+              # On the very first sync there is no database yet: it is created in
+              # the phase this hook now runs before. Waiting the full window and
+              # failing would block that creation for good, so an absent database
+              # is not an error here — it is "nothing to prepare yet". The hook
+              # runs again once it exists, and the reader recovers on its own.
               attempts=0
               until pg_isready -q; do
                 attempts=$((attempts + 1))
                 if [ "$attempts" -ge 60 ]; then
-                  echo "Database still unreachable after $attempts attempts; giving up."
-                  exit 1
+                  echo "No database to prepare yet; leaving it for the next run."
+                  exit 0
                 fi
                 echo "Waiting for the database to accept connections..."
                 sleep 5
