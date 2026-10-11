@@ -250,8 +250,8 @@ deployment:
     startupProbe: {}
     lifecycle: {}
     resources: {}
-    volumeMounts: {}
-    volumes: {}
+    volumeMounts: []
+    volumes: []
     extraInitContainers: []
     initDb: true
 
@@ -288,8 +288,8 @@ deployment:
     startupProbe: {}
     lifecycle: {}
     resources: {}
-    volumeMounts: {}
-    volumes: {}
+    volumeMounts: []
+    volumes: []
     extraInitContainers: []
     initDb: true
 
@@ -315,8 +315,8 @@ deployment:
     startupProbe: {}
     lifecycle: {}
     resources: {}
-    volumeMounts: {}
-    volumes: {}
+    volumeMounts: []
+    volumes: []
     extraInitContainers: []
     initDb: true
 
@@ -432,8 +432,8 @@ deployment:
     startupProbe: {}
     lifecycle: {}
     resources: {}
-    volumeMounts: {}
-    volumes: {}
+    volumeMounts: []
+    volumes: []
     strategy: {}
     extraInitContainers: []
 
@@ -459,8 +459,8 @@ deployment:
     startupProbe: {}
     lifecycle: {}
     resources: {}
-    volumeMounts: {}
-    volumes: {}
+    volumeMounts: []
+    volumes: []
 
   kong:
     enabled: true
@@ -494,8 +494,8 @@ deployment:
     startupProbe: {}
     lifecycle: {}
     resources: {}
-    volumeMounts: {}
-    volumes: {}
+    volumeMounts: []
+    volumes: []
 
   meta:
     enabled: true
@@ -519,8 +519,8 @@ deployment:
     startupProbe: {}
     lifecycle: {}
     resources: {}
-    volumeMounts: {}
-    volumes: {}
+    volumeMounts: []
+    volumes: []
 
   minio:
     enabled: false
@@ -544,8 +544,8 @@ deployment:
     startupProbe: {}
     lifecycle: {}
     resources: {}
-    volumeMounts: {}
-    volumes: {}
+    volumeMounts: []
+    volumes: []
 
   realtime:
     enabled: true
@@ -573,8 +573,8 @@ deployment:
     startupProbe: {}
     lifecycle: {}
     resources: {}
-    volumeMounts: {}
-    volumes: {}
+    volumeMounts: []
+    volumes: []
     extraInitContainers: []
     initDb: true
 
@@ -600,8 +600,8 @@ deployment:
     startupProbe: {}
     lifecycle: {}
     resources: {}
-    volumeMounts: {}
-    volumes: {}
+    volumeMounts: []
+    volumes: []
     extraInitContainers: []
     initDb: true
 
@@ -640,8 +640,8 @@ deployment:
     startupProbe: {}
     lifecycle: {}
     resources: {}
-    volumeMounts: {}
-    volumes: {}
+    volumeMounts: []
+    volumes: []
     extraInitContainers: []
     initDb: true
 
@@ -676,8 +676,8 @@ deployment:
     startupProbe: {}
     lifecycle: {}
     resources: {}
-    volumeMounts: {}
-    volumes: {}
+    volumeMounts: []
+    volumes: []
     ## Deployment strategy. Set to {type: Recreate} when using persistence.snippets
     ## with a ReadWriteOnce PVC: the chart's default RollingUpdate causes a
     ## Multi-Attach error because the new pod is scheduled before the old one
@@ -706,8 +706,8 @@ deployment:
     startupProbe: {}
     lifecycle: {}
     resources: {}
-    volumeMounts: {}
-    volumes: {}
+    volumeMounts: []
+    volumes: []
 
 image:
   analytics:

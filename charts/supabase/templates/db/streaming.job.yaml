@@ -33,7 +33,10 @@ spec:
   # Bounded on both sides: the wait below gives up, and the deadline covers the
   # pod never getting that far (image pull, scheduling).
   activeDeadlineSeconds: 900
-  ttlSecondsAfterFinished: 600
+  # No ttlSecondsAfterFinished: Argo CD tracks this Job like any resource (a
+  # wave, not a hook), so a TTL deleting it made it OutOfSync and self-heal
+  # recreated it -- the SQL replayed every ~10 min, forever (#27). A finished Job
+  # stays; a changed SQL renames it, and the old one is pruned.
   template:
     metadata:
       labels:
